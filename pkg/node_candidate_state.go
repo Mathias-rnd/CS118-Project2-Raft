@@ -87,17 +87,17 @@ func (n *Node) requestVotes(currTerm uint64) (fallback, electionResult bool) {
 			continue
 		}
 		go func(p *RemoteNode) {
-			// lastLogIdx := n.LastLogIndex()
-			// lastLogTerm := uint64(0)
-			// if lastLogIdx >= 0 {
-			// 	lastLogTerm = n.GetLog(lastLogIdx).TermId
-			// }
+			lastLogIdx := n.LastLogIndex()
+			lastLogTerm := uint64(0)
+			if lastLogIdx >= 0 {
+				lastLogTerm = n.GetLog(lastLogIdx).TermId
+			}
 
 			req := &RequestVoteRequest{
 				Term:         currTerm,
 				Candidate:    n.Self,
 				LastLogIndex: n.LastLogIndex(),
-				// LastLogTerm:  lastLogTerm,
+				LastLogTerm:  lastLogTerm,
 			}
 
 			reply, err := p.RequestVoteRPC(n, req)
@@ -109,11 +109,6 @@ func (n *Node) requestVotes(currTerm uint64) (fallback, electionResult bool) {
 			} else {
 				replies <- (err == nil && reply.VoteGranted)
 			}
-			// if err != nil {
-			// 	replies <- nil
-			// 	return
-			// }
-			// replies <- reply
         }(node)
 
 	}
