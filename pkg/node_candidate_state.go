@@ -5,11 +5,65 @@ func (n *Node) doCandidate() stateFunction {
 	n.Out("Transitioning to CANDIDATE_STATE")
 	n.setState(CandidateState)
 
+	// Increment current term and vote for self
+	n.SetCurrentTerm(n.GetCurrentTerm() + 1)
+	n.setVotedFor(n.Self.Id)
+
+	timeout := randomTimeout(n.Config.ElectionTimeout)
+
+	// Request votes from all other nodes
+	fallback, electionResult := n.requestVotes(n.GetCurrentTerm())
+
+	if fallback {
+		return n.doFollower
+	}
+
+	if electionResult {
+		// Won the election, become leader
+		return n.doLeader
+	}
 	// TODO: Students should implement this method
 	// Hint: perform any initial work, and then consider what a node in the
 	// candidate state should do when it receives an incoming message on every
 	// possible channel.
-	return nil
+	for {
+		select {
+		// Case: election timeout without new leader, run again
+		case <-timeout:
+			return n.doCandidate
+
+		// Case client receives heartbeat -- leader exists
+		case msg := <-n.appendEntries:
+			_, fallback := n.handleAppendEntries(msg)
+			if fallback {
+				return n.doFollower
+			}
+
+		// Case: get votes// successful election
+		case candidate := <-n.requestVote:
+			fallback := n.handleRequestVote(candidate)
+			if fallback {
+				// timeout = randomTimeout(n.Config.ElectionTimeout)
+				return n.doFollower
+			}
+
+		// Case: candidate receives client request
+		case clientRequestMsg := <-n.clientRequest:
+			leader := n.getLeader()
+			clientRequestMsg.reply <- ClientReply{
+				Status:     ClientStatus_ELECTION_IN_PROGRESS,
+				ClientId:   clientRequestMsg.request.ClientId,
+				Response:   nil,
+				LeaderHint: leader,
+			}
+
+		// case follower to shutdown state
+		case shutdown := <-n.gracefulExit:
+			if shutdown {
+				return nil
+			}
+		}
+	}
 }
 
 // requestVotes is called to request votes from all other nodes. It takes in a
@@ -17,12 +71,78 @@ func (n *Node) doCandidate() stateFunction {
 // successful election, false otherwise.
 func (n *Node) requestVotes(currTerm uint64) (fallback, electionResult bool) {
 	// TODO: Students should implement this method
-	return
+
+	nodes := n.getPeers()
+	majority := len(nodes) / 2 + 1
+	votesReceived := 1 // vote for self
+
+	if votesReceived >= majority {
+		return false, true
+	}
+	
+	replies := make(chan bool, len(nodes)-1)
+
+	for _, node := range nodes {
+		if node.Id == n.Self.Id {
+			continue
+		}
+		go func(p *RemoteNode) {
+			// lastLogIdx := n.LastLogIndex()
+			// lastLogTerm := uint64(0)
+			// if lastLogIdx >= 0 {
+			// 	lastLogTerm = n.GetLog(lastLogIdx).TermId
+			// }
+
+			req := &RequestVoteRequest{
+				Term:         currTerm,
+				Candidate:    n.Self,
+				LastLogIndex: n.LastLogIndex(),
+				// LastLogTerm:  lastLogTerm,
+			}
+
+			reply, err := p.RequestVoteRPC(n, req)
+			if err == nil && reply.Term > currTerm {
+			
+				n.SetCurrentTerm(reply.Term)
+				n.setVotedFor("")
+				replies <- false
+			} else {
+				replies <- (err == nil && reply.VoteGranted)
+			}
+			// if err != nil {
+			// 	replies <- nil
+			// 	return
+			// }
+			// replies <- reply
+        }(node)
+
+	}
+
+    //    Loop runs for each peer we sent a request to
+    for i := 0; i < len(nodes)-1; i++ {
+        // Receive result from channel
+		voteGranted := <-replies
+        if voteGranted {
+            // If vote granted, increment count
+            votesReceived++
+            // Check if we have majority (more than half)
+            if votesReceived >= majority { 
+                return false, true // Won election!
+            }
+        } else if n.GetCurrentTerm() > currTerm {
+            // If we discovered a higher term (fallback signal), stop election
+            return true, false // Fallback to follower
+        }
+    }
+    
+    // If loop finishes without majority or fallback, election failed
+    return false, false
 }
 
 // handleRequestVote handles an incoming vote request. It returns true if the caller
 // should fall back to the follower state, false otherwise.
 func (n *Node) handleRequestVote(msg RequestVoteMsg) (fallback bool) {
+
 	// TODO: Students should implement this method
 	return true
 }

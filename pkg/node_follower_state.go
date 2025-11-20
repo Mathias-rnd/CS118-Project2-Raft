@@ -11,16 +11,50 @@ func (n *Node) doFollower() stateFunction {
 	n.Out("Transitioning to FollowerState")
 	n.setState(FollowerState)
 
+	timeout := randomTimeout(n.Config.ElectionTimeout)
+
 	// TODO: Students should implement this method
 	// Hint: perform any initial work, and then consider what a node in the
 	// follower state should do when it receives an incoming message on every
 	// possible channel.
 	for {
 		select {
+		// case follower to candidate ()
+		case candidate := <-n.requestVote:
+			fallback := n.handleRequestVote(candidate)
+			if fallback {
+				timeout = randomTimeout(n.Config.ElectionTimeout)
+			}
+
+		// Handle AppendEntries RPC
+        case msg := <-n.appendEntries:
+            // handleAppendEntries is already implemented in the file
+            resetTimeout, _ := n.handleAppendEntries(msg)
+            if resetTimeout {
+				// Reset the election timer if we received a valid heartbeat/entry
+                timeout = randomTimeout(n.Config.ElectionTimeout)
+            }
+
+        case clientRequestMsg := <-n.clientRequest:
+            // Followers redirect client requests to the leader
+            leader := n.getLeader()
+            clientRequestMsg.reply <- ClientReply{
+                ClientId:   clientRequestMsg.request.ClientId,
+                Status:     ClientStatus_NOT_LEADER,
+                Response:   nil,
+                LeaderHint: leader,
+            }
+			
+		// case follower to shutdown state
 		case shutdown := <-n.gracefulExit:
 			if shutdown {
 				return nil
 			}
+
+		// Handle Election Timeout
+		case <-timeout:
+			// If timeout expires, transition to Candidate state to start an election
+			return n.doCandidate
 		}
 	}
 }
