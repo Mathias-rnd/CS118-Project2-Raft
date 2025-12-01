@@ -138,6 +138,54 @@ func (n *Node) requestVotes(currTerm uint64) (fallback, electionResult bool) {
 // should fall back to the follower state, false otherwise.
 func (n *Node) handleRequestVote(msg RequestVoteMsg) (fallback bool) {
 
-	// TODO: Students should implement this method
-	return true
+	// Candidate is behind (n has larger term), vote no
+	if n.GetCurrentTerm() > msg.request.Term {
+		msg.reply <- RequestVoteReply{
+			Term:        n.GetCurrentTerm(),
+			VoteGranted: false,
+		}
+		return false // Vote no
+	} 
+	
+	// Term is higher, so we update our term and fallback to follower
+	if msg.request.Term > n.GetCurrentTerm() {
+		n.SetCurrentTerm(msg.request.Term)
+		n.setVotedFor("")
+		fallback = true
+	}
+	
+	// check if we can vote for the candidate
+	canVote := (n.GetVotedFor() == "" || n.GetVotedFor() == msg.request.Candidate.Id)
+
+	lastLogIDx := n.LastLogIndex()
+	lastLogTerm := uint64(0)
+	if lastLogIDx >= 0 {
+		lastLogTerm = n.GetLog(lastLogIDx).TermId
+	}
+
+	// Check if candidate's log is up to date
+	LogisUpToDate := false
+	if msg.request.LastLogTerm > lastLogTerm {
+		LogisUpToDate = true
+	} else if msg.request.LastLogTerm == lastLogTerm && msg.request.LastLogIndex >= lastLogIDx {
+		LogisUpToDate = true
+	} 
+
+	// If both conditions are met, we can grant the vote
+	if canVote && LogisUpToDate {
+		n.setVotedFor(msg.request.Candidate.Id)
+		msg.reply <- RequestVoteReply{
+			Term:        n.GetCurrentTerm(),
+			VoteGranted: true,
+		}
+	// condition is not met
+	} else {
+		msg.reply <- RequestVoteReply{
+			Term:        n.GetCurrentTerm(),
+			VoteGranted: false,
+		}
+	}
+
+	return fallback
+	
 }

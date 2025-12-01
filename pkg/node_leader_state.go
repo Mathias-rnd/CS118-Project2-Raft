@@ -1,8 +1,8 @@
 package pkg
 
 import (
-	"context"
-	"sort"
+	// "context"
+	// "sort"
 	"strconv"
 	"strings"
 	"time"
@@ -17,8 +17,94 @@ func (n *Node) doLeader() stateFunction {
 	// Hint: perform any initial work, and then consider what a node in the
 	// leader state should do when it receives an incoming message on every
 	// possible channel.
-	return nil
+
+	n.setLeader(n.Self)
+
+	lastLogIndex := n.LastLogIndex()
+    for _, node := range n.Peers {
+        n.nextIndex[node.Id] = lastLogIndex + 1
+        n.matchIndex[node.Id] = 0
+    }
+
+	fallback := n.sendHeartbeats()
+    if fallback {
+        return n.doFollower
+    }
+
+	ticker := time.NewTicker(n.Config.HeartbeatTimeout)
+    defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			fallback := n.sendHeartbeats()
+			if fallback {
+				return n.doFollower
+			}
+		
+		// Channel 1 append entries
+		// Another leader might exist
+		case msg := <-n.appendEntries:
+			_, fallback := n.handleAppendEntries(msg)
+			// Check if leader term is outdated and step down if so
+			if fallback {
+				// Update term and step down
+				return n.doFollower
+			}
+
+		// Channel 2 request vote 
+		// leader should shut down candidate??
+		case candidate := <-n.requestVote:
+			// check candidates term and step down if leader is outdated
+			// otherwise shut down candidate 
+			fallback := n.handleRequestVote(candidate)
+			if fallback {
+				return n.doFollower
+			}
+			
+		// Channel 3 clientRequest
+		// Request from client should be logged and propagated to followers(?)
+		case clientRequestMsg := <-n.clientRequest:
+			// Initialize log entry
+			entry := &LogEntry{
+				Index:     n.LastLogIndex() + 1,
+				TermId:    n.GetCurrentTerm(),
+				Type:      CommandType_STATE_MACHINE_COMMAND,
+				Command:   clientRequestMsg.request.StateMachineCmd,
+				Data:	   clientRequestMsg.request.Data,
+				CacheId:   CreateCacheID(clientRequestMsg.request.ClientId, clientRequestMsg.request.SequenceNum),
+			}
+
+			// Append entry to leader log
+			n.StoreLog(entry)
+
+			// Register client
+			// Lock while changes are in progress
+			n.requestsMutex.Lock()
+			// Append cacheID/channel to requests map for later response access to channel 
+			n.requestsByCacheID[entry.CacheId] = append(
+				n.requestsByCacheID[entry.CacheId],
+				clientRequestMsg.reply,
+			)
+			// Unlock after append is complete
+			n.requestsMutex.Unlock()
+
+			// Propagate log entry to followers
+			n.sendHeartbeats() 
+
+
+		// Channel 4: gracefulExit
+		// exit leader loop?
+		case shutdown := <-n.gracefulExit:
+			if shutdown {
+				return nil
+			}
+		}
+
+	}
 }
+
+
 
 // sendHeartbeats is used by the leader to send out heartbeats to each of
 // the other nodes. It returns true if the leader should fall back to the
@@ -30,7 +116,128 @@ func (n *Node) doLeader() stateFunction {
 // machine should be given the new log entries via processLogEntry.
 func (n *Node) sendHeartbeats() (fallback bool) {
 	// TODO: Students should implement this method
-	return true, true
+
+	if n.GetState() != LeaderState {
+		return true
+	}
+
+	currTerm := n.GetCurrentTerm()
+	nodes := n.getPeers()
+	
+	// lastLogIndex := n.LastLogIndex() // what we send??
+
+	for _, peer := range nodes {
+		// skip ourselves
+		if peer.Id == n.Self.Id {
+			continue
+		}
+
+		go func(p *RemoteNode) {
+			n.LeaderMutex.Lock()
+			nextIdx := n.nextIndex[p.Id]
+			n.LeaderMutex.Unlock()
+
+			prevLogIdx := nextIdx - 1
+			prevLogTerm := uint64(0)
+			
+			// Check that previous log index also matches
+			if prevLogIdx > 0 {
+				entry := n.GetLog(prevLogIdx)
+				if entry != nil {
+					prevLogTerm = entry.TermId
+				}
+			}
+
+			var entries []*LogEntry
+			lastLogIdx := n.LastLogIndex()
+			
+			// Store p's missing entries in entries arr
+			if nextIdx <= lastLogIdx {
+                for i := nextIdx; i <= lastLogIdx; i++ {
+                    entries = append(entries, n.GetLog(i))
+                }
+            }
+			
+            leaderCommit := n.CommitIndex.Load()
+
+			req := &AppendEntriesRequest{
+                Term:         currTerm,
+                Leader:       n.Self,
+                PrevLogIndex: prevLogIdx,
+                PrevLogTerm:  prevLogTerm,
+                Entries:      entries,
+                LeaderCommit: leaderCommit,
+            }
+
+			reply, err := p.AppendEntriesRPC(n, req)
+				if err != nil {
+					return
+				}
+
+			// node has higher term, we step down to follower
+			if reply.Term > currTerm {
+				n.SetCurrentTerm(reply.Term)
+				n.setState(FollowerState)
+				return
+			}
+
+			if reply.Success {
+				n.LeaderMutex.Lock()
+				// update peer match index and next match index
+				newMatchIndex := prevLogIdx + uint64(len(entries))
+				// compare new match index to curr p match index
+				if newMatchIndex > n.matchIndex[p.Id] {
+					n.matchIndex[p.Id] = newMatchIndex
+					n.nextIndex[p.Id] = newMatchIndex + 1
+				}
+				n.LeaderMutex.Unlock()
+
+				// check if majority success commit
+				
+				for N := n.LastLogIndex(); N > n.CommitIndex.Load(); N-- {
+					if n.GetLog(N).TermId != currTerm {
+						continue
+					}
+
+					count := 1 // include leader
+					// Count how many other nodes have committed entry
+					n.LeaderMutex.Lock()
+					for _, otherPeer := range nodes {
+						// Skip self, already counted in initialization
+						if otherPeer.Id == n.Self.Id {
+							continue
+						}
+						// Check for peers
+						if n.matchIndex[otherPeer.Id] >= N {
+							count++
+						}
+					}
+					n.LeaderMutex.Unlock()
+					
+
+					// Check if quorum (first majority will be highest value of N with a majority)
+					if count > len(nodes)/2 {
+						// Quorum !!! we can commit
+						n.CommitIndex.Store(N)
+						start := n.LastApplied.Load() + 1
+						for i := start; i <= N; i++ {
+							n.processLogEntry(i)
+							n.LastApplied.Store(i)
+						}
+						break
+					}	
+				}
+			} else {
+				n.LeaderMutex.Lock()
+				if next := n.nextIndex[p.Id]; next > 1 {
+					n.nextIndex[p.Id] = next - 1
+				}
+				n.LeaderMutex.Unlock()
+			}
+		} (peer)
+	}
+
+	return n.GetState() != LeaderState
 }
 
 // processLogEntry applies a single log entry to the finite state machine. It is
