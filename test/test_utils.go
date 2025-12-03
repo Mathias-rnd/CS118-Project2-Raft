@@ -1,11 +1,22 @@
 package test
 
 import (
-	"bytes"
-	"fmt"
-	"io/ioutil"
-	"time"
+    "bytes"
+    "flag"
+    "fmt"
+    "io/ioutil"
+    "time"
+
+    "google.golang.org/grpc/grpclog"
+    raft "raft/pkg"
 )
+
+// import (
+// 	"bytes"
+// 	"fmt"
+// 	"io/ioutil"
+// 	"time"
+// )
 
 // consts for testing
 const (

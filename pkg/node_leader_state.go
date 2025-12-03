@@ -152,9 +152,12 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 			lastLogIdx := n.LastLogIndex()
 			
 			// Store p's missing entries in entries arr
-			if nextIdx <= lastLogIdx {
+            if nextIdx <= lastLogIdx {
+                entries = make([]*LogEntry, 0, lastLogIdx-nextIdx+1)
                 for i := nextIdx; i <= lastLogIdx; i++ {
-                    entries = append(entries, n.GetLog(i))
+                    if entry := n.GetLog(i); entry != nil {
+                        entries = append(entries, entry)
+                    }
                 }
             }
 			
@@ -182,10 +185,10 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 			}
 
 			if reply.Success {
-				n.LeaderMutex.Lock()
 				// update peer match index and next match index
 				newMatchIndex := prevLogIdx + uint64(len(entries))
 				// compare new match index to curr p match index
+				n.LeaderMutex.Lock()
 				if newMatchIndex > n.matchIndex[p.Id] {
 					n.matchIndex[p.Id] = newMatchIndex
 					n.nextIndex[p.Id] = newMatchIndex + 1
