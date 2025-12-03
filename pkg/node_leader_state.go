@@ -20,11 +20,25 @@ func (n *Node) doLeader() stateFunction {
 
 	n.setLeader(n.Self)
 
+	n.LeaderMutex.Lock() // added
 	lastLogIndex := n.LastLogIndex()
-    for _, node := range n.Peers {
+    for _, node := range n.getPeers() {
         n.nextIndex[node.Id] = lastLogIndex + 1
         n.matchIndex[node.Id] = 0
     }
+	n.LeaderMutex.Unlock() // added
+
+    noopEntry := LogEntry{ // added
+        Index:   n.LastLogIndex() + 1,
+        TermId:  n.GetCurrentTerm(),
+        Type:    CommandType_NOOP,
+        Command: 0,
+        Data:    nil,
+        CacheId: "",
+    }
+    n.StoreLog(&noopEntry) // added
+	n.matchIndex[n.Self.Id] = noop.Index
+
 
 	fallback := n.sendHeartbeats()
     if fallback {
