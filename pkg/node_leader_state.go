@@ -172,7 +172,6 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 	
 	// lastLogIndex := n.LastLogIndex() // what we send??
 
-
 	for _, peer := range nodes {
 		// skip ourselves
 		if peer.Id == n.Self.Id {
@@ -281,8 +280,6 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 					}	
 				}
 				n.LeaderMutex.Unlock()
-				
-
 			} else {
 				n.LeaderMutex.Lock()
 				if next := n.nextIndex[p.Id]; next > 1 {
@@ -295,9 +292,6 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 
 	return steppedDown || n.GetState() != LeaderState
 }
-
-
-
 
 // processLogEntry applies a single log entry to the finite state machine. It is
 // called once a log entry has been replicated to a majority and committed by
