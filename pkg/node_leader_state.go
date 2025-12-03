@@ -168,6 +168,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 
 	currTerm := n.GetCurrentTerm()
 	nodes := n.getPeers()
+	steppedDown := false
 	
 	// lastLogIndex := n.LastLogIndex() // what we send??
 
@@ -225,7 +226,9 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 			// node has higher term, we step down to follower
 			if reply.Term > currTerm {
 				n.SetCurrentTerm(reply.Term)
+				n.setVotedFor("")
 				n.setState(FollowerState)
+				steppedDown = true
 				return
 			}
 
@@ -287,7 +290,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 		}(peer)
 	}
 
-	return n.GetState() != LeaderState
+	return steppedDown || n.GetState() != LeaderState
 }
 
 // processLogEntry applies a single log entry to the finite state machine. It is
