@@ -80,31 +80,61 @@ func (n *Node) doLeader() stateFunction {
 		// Request from client should be logged and propagated to followers(?)
 		case clientRequestMsg := <-n.clientRequest:
 			// Initialize log entry
-			entry := &LogEntry{
-				Index:     n.LastLogIndex() + 1,
-				TermId:    n.GetCurrentTerm(),
-				Type:      CommandType_STATE_MACHINE_COMMAND,
-				Command:   clientRequestMsg.request.StateMachineCmd,
-				Data:	   clientRequestMsg.request.Data,
-				CacheId:   CreateCacheID(clientRequestMsg.request.ClientId, clientRequestMsg.request.SequenceNum),
+
+			if clientRequestMsg.request.StateMachineCmd == 0 && len(clientRequestMsg.request.Data) == 0 {
+				entry := LogEntry{
+					Index:   n.LastLogIndex() + 1,
+					TermId:  n.GetCurrentTerm(),
+					Type:    CommandType_CLIENT_REGISTRATION,
+					Command: 0,
+					Data:    nil,
+					CacheId: "",
+				}
+				n.StoreLog(&entry)
+				
+				// Reply immediately with clientID = log index
+				clientRequestMsg.reply <- ClientReply{
+					Status:     ClientStatus_OK,
+					ClientId:   entry.Index,  // ← ClientID is the log index!
+					Response:   nil,
+					LeaderHint: n.Self,
+				}
+
+			} else {
+
+				cacheID := CreateCacheID(clientRequestMsg.request.ClientId, clientRequestMsg.request.SequenceNum)
+				entry := &LogEntry{
+					Index:     n.LastLogIndex() + 1,
+					TermId:    n.GetCurrentTerm(),
+					Type:      CommandType_STATE_MACHINE_COMMAND,
+					Command:   clientRequestMsg.request.StateMachineCmd,
+					Data:	   clientRequestMsg.request.Data,
+					CacheId:   cacheID,
+				}
+
+				n.requestsMutex.Lock()
+				n.requestsByCacheID[cacheID] = append(n.requestsByCacheID[cacheID], clientRequestMsg.reply)
+				n.requestsMutex.Unlock()
+				
+				n.StoreLog(entry)
 			}
+			// commented out
+			// // Append entry to leader log
+			// n.StoreLog(entry)
 
-			// Append entry to leader log
-			n.StoreLog(entry)
+			// // Register client
+			// // Lock while changes are in progress
+			// n.requestsMutex.Lock()
+			// // Append cacheID/channel to requests map for later response access to channel 
+			// n.requestsByCacheID[entry.CacheId] = append(
+			// 	n.requestsByCacheID[entry.CacheId],
+			// 	clientRequestMsg.reply,
+			// )
+			// // Unlock after append is complete
+			// n.requestsMutex.Unlock()
 
-			// Register client
-			// Lock while changes are in progress
-			n.requestsMutex.Lock()
-			// Append cacheID/channel to requests map for later response access to channel 
-			n.requestsByCacheID[entry.CacheId] = append(
-				n.requestsByCacheID[entry.CacheId],
-				clientRequestMsg.reply,
-			)
-			// Unlock after append is complete
-			n.requestsMutex.Unlock()
-
-			// Propagate log entry to followers
-			n.sendHeartbeats() 
+			// // Propagate log entry to followers
+			// n.sendHeartbeats() 
 
 
 		// Channel 4: gracefulExit
@@ -207,7 +237,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 					n.matchIndex[p.Id] = newMatchIndex
 					n.nextIndex[p.Id] = newMatchIndex + 1
 				}
-				n.LeaderMutex.Unlock()
+				// n.LeaderMutex.Unlock()
 
 				// check if majority success commit
 				
@@ -218,7 +248,8 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 
 					count := 1 // include leader
 					// Count how many other nodes have committed entry
-					n.LeaderMutex.Lock()
+
+					// n.LeaderMutex.Lock()
 					for _, otherPeer := range nodes {
 						// Skip self, already counted in initialization
 						if otherPeer.Id == n.Self.Id {
@@ -229,7 +260,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 							count++
 						}
 					}
-					n.LeaderMutex.Unlock()
+					// n.LeaderMutex.Unlock()
 					
 
 					// Check if quorum (first majority will be highest value of N with a majority)
@@ -244,6 +275,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 						break
 					}	
 				}
+				n.LeaderMutex.Unlock()
 			} else {
 				n.LeaderMutex.Lock()
 				if next := n.nextIndex[p.Id]; next > 1 {
@@ -251,7 +283,7 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 				}
 				n.LeaderMutex.Unlock()
 			}
-		} (peer)
+		}(peer)
 	}
 
 	return n.GetState() != LeaderState
