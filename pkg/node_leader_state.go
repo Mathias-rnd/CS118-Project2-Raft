@@ -172,10 +172,6 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 	
 	// lastLogIndex := n.LastLogIndex() // what we send??
 
-	// added block 
-	successCh := make(chan bool, len(nodes)-1)
-	peerCount := len(nodes)
-
 
 	for _, peer := range nodes {
 		// skip ourselves
@@ -286,7 +282,6 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 				}
 				n.LeaderMutex.Unlock()
 				
-				successCh <- true // added
 
 			} else {
 				n.LeaderMutex.Lock()
@@ -294,34 +289,9 @@ func (n *Node) sendHeartbeats() (fallback bool) {
 					n.nextIndex[p.Id] = next - 1
 				}
 				n.LeaderMutex.Unlock()
-				successCh <- false
 			}
 		}(peer)
 	}
-
-	/////////////////////////////////
-	// Collect responses from all peers or timeout
-	successCount := 1 // include self
-	timeout := time.After(n.Config.HeartbeatTimeout)
-	for i := 0; i < peerCount-1; i++ {
-		select {
-		case ok := <-successCh:
-			if ok {
-				successCount++
-			}
-		case <-timeout:
-			// Treat timed-out peer as failure
-		}
-	}
-
-	// step down if no majority
-	if successCount <= len(nodes)/2 {
-		n.Out("Leader lost quorum, stepping down")
-		n.setState(FollowerState)
-		return true
-	}
-
-	//////////////////////////////////////
 
 	return steppedDown || n.GetState() != LeaderState
 }
