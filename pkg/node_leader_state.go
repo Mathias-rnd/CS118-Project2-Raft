@@ -37,7 +37,7 @@ func (n *Node) doLeader() stateFunction {
         CacheId: "",
     }
     n.StoreLog(&noopEntry) // added
-	n.matchIndex[n.Self.Id] = noop.Index
+	n.matchIndex[n.Self.Id] = noopEntry.Index
 
 
 	fallback := n.sendHeartbeats()
