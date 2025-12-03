@@ -117,7 +117,7 @@ func (n *Node) doLeader() stateFunction {
 				n.requestsMutex.Unlock()
 				
 				n.StoreLog(entry)
-				n.SendHeartbeats()
+				n.sendHeartbeats()
 			}
 			// commented out
 			// // Append entry to leader log
