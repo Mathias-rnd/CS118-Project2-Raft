@@ -90,7 +90,7 @@ func (n *Node) doLeader() stateFunction {
 					Data:    nil,
 					CacheId: "",
 				}
-				n.StoreLog(entry)
+				n.StoreLog(&entry)
 				
 				// Reply immediately with clientID = log index
 				clientRequestMsg.reply <- ClientReply{
