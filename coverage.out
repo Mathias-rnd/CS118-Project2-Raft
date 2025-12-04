@@ -1,0 +1,17 @@
+mode: set
+raft/pkg/hashmachine/hashmachine.go:24.66,28.22 3 1
+raft/pkg/hashmachine/hashmachine.go:32.2,34.39 2 1
+raft/pkg/hashmachine/hashmachine.go:28.22,30.3 1 1
+raft/pkg/hashmachine/hashmachine.go:37.54,41.22 3 1
+raft/pkg/hashmachine/hashmachine.go:45.2,49.39 4 1
+raft/pkg/hashmachine/hashmachine.go:41.22,43.3 1 1
+raft/pkg/hashmachine/hashmachine.go:54.54,59.2 3 1
+raft/pkg/hashmachine/hashmachine.go:63.81,64.38 1 1
+raft/pkg/hashmachine/hashmachine.go:74.2,74.26 1 1
+raft/pkg/hashmachine/hashmachine.go:64.38,65.18 1 1
+raft/pkg/hashmachine/hashmachine.go:66.22,67.23 1 1
+raft/pkg/hashmachine/hashmachine.go:68.21,69.18 1 1
+raft/pkg/hashmachine/hashmachine.go:70.11,71.49 1 1
+raft/pkg/hashmachine/hashmachine.go:77.50,82.2 3 0
+raft/pkg/hashmachine/hashmachine.go:84.48,89.2 3 0
+raft/pkg/hashmachine/hashmachine.go:91.39,93.2 1 1

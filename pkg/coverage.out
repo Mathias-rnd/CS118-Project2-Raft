@@ -1,0 +1,21 @@
+mode: set
+raft/test/test_utils.go:29.13,31.2 1 1
+raft/test/test_utils.go:33.24,38.2 4 1
+raft/test/test_utils.go:42.59,49.2 5 1
+raft/test/test_utils.go:52.57,54.29 2 1
+raft/test/test_utils.go:60.2,60.23 1 1
+raft/test/test_utils.go:54.29,55.42 1 1
+raft/test/test_utils.go:55.42,57.4 1 1
+raft/test/test_utils.go:60.23,62.3 1 0
+raft/test/test_utils.go:62.8,62.30 1 1
+raft/test/test_utils.go:62.30,64.3 1 1
+raft/test/test_utils.go:64.8,66.3 1 0
+raft/test/test_utils.go:70.60,71.29 1 1
+raft/test/test_utils.go:78.2,78.13 1 1
+raft/test/test_utils.go:71.29,72.42 1 1
+raft/test/test_utils.go:72.42,73.106 1 1
+raft/test/test_utils.go:73.106,75.5 1 0
+raft/test/test_utils.go:83.41,84.34 1 1
+raft/test/test_utils.go:92.2,92.29 1 1
+raft/test/test_utils.go:84.34,87.28 3 1
+raft/test/test_utils.go:87.28,90.4 2 1

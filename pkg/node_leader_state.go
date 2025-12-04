@@ -354,3 +354,4 @@ func (n *Node) processLogEntry(logIndex uint64) (fallback bool) {
 
 	return
 }
+
